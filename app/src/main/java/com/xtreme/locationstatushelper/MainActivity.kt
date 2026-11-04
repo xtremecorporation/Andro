@@ -28,6 +28,7 @@ class MainActivity : AppCompatActivity() {
 
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (PermissionManager.hasLocation(this)) startServiceNow()
+        else preferences.recoveryStatus = "Location permission denied"
         updateUi()
     }
     private val adminLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { updateUi() }

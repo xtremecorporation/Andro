@@ -31,6 +31,8 @@ Open the app's **Background Operation Guide** or Settings → Apps → Location 
 
 Android 14+ requires a declared location foreground-service type and location permission. Android 15/16 can block background foreground-service starts, boot recovery, or OEM auto-start. If the service process is killed by an OEM, no ordinary app can guarantee an immediate restart; use the visible launcher, Android Settings → Apps entry, or the Resume notification. If Location is switched off while the service remains alive, requests stop and resume when the provider-change callback is delivered. The native indicator appears only while Android has active location access.
 
+The boot receiver is not direct-boot aware: it intentionally waits for the normal unlocked `BOOT_COMPLETED` event because credential-protected preferences cannot safely be read before user unlock. This is a documented limitation, not a hidden persistence mechanism.
+
 ## Build locally
 
 Target SDK and compile SDK are 36, Java is 17, AGP is 8.13, Kotlin is 2.2.21, and Gradle is 8.13. With Java 17, Android SDK 36, and Gradle available:

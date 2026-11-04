@@ -1,67 +1,132 @@
 package com.xtreme.locationstatushelper
 
-import android.Manifest
 import android.app.Service
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.IBinder
 import android.os.Looper
-import androidx.core.content.ContextCompat
 
 class LocationService : Service() {
     private lateinit var locationManager: LocationManager
-    private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
+    private lateinit var stateMonitor: LocationStateMonitor
+    private lateinit var preferences: ServicePreferences
+    private val registeredProviders = mutableSetOf<String>()
+    private var startedInForeground = false
+
     private val listener = object : LocationListener {
-        override fun onLocationChanged(location: Location) { /* Access is intentionally local and not persisted. */ }
-        override fun onProviderEnabled(provider: String) = refreshRequests()
-        override fun onProviderDisabled(provider: String) = refreshRequests()
+        override fun onLocationChanged(location: Location) { /* Local-only; intentionally not persisted. */ }
+        override fun onProviderEnabled(provider: String) = refreshRequests("Provider enabled")
+        override fun onProviderDisabled(provider: String) = refreshRequests("Provider disabled")
     }
 
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(LocationManager::class.java)
+        preferences = ServicePreferences(this)
         NotificationHelper.createChannel(this)
-        startForeground(NotificationHelper.NOTIFICATION_ID, NotificationHelper.build(this, isLocationEnabled()))
+        try {
+            startForeground(NotificationHelper.NOTIFICATION_ID, NotificationHelper.build(this, "Starting location service", false))
+            startedInForeground = true
+            preferences.runtimeRunning = true
+        } catch (error: Exception) {
+            preferences.runtimeRunning = false
+            preferences.recoveryStatus = "Android blocked foreground service startup: ${error.javaClass.simpleName}"
+            RecoveryHelper.postResumeNotification(this, "Android blocked foreground service startup.")
+            stopSelf()
+            return
+        }
+        stateMonitor = LocationStateMonitor(this) { refreshRequests("System Location state changed") }
+        stateMonitor.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!startedInForeground) return START_NOT_STICKY
         if (intent?.action == NotificationHelper.ACTION_STOP) {
-            prefs.edit().putBoolean(KEY_ENABLED, false).apply()
+            preferences.userEnabled = false
+            preferences.recoveryStatus = "Stopped by user"
             stopSelf()
             return START_NOT_STICKY
         }
-        if (!prefs.getBoolean(KEY_ENABLED, false)) { stopSelf(); return START_NOT_STICKY }
-        refreshRequests()
+        if (!preferences.userEnabled) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        refreshRequests("Service started")
         return START_STICKY
     }
 
-    private fun refreshRequests() {
+    private fun refreshRequests(trigger: String) {
+        if (!::preferences.isInitialized || !preferences.userEnabled) return
         stopRequests()
-        if (!PermissionManager.hasLocation(this) || !isLocationEnabled()) {
-            updateNotification()
+        if (!PermissionManager.hasLocation(this)) {
+            setWaitingState("Location permission is required")
+            preferences.recoveryStatus = "Location permission is not granted"
             return
         }
-        val provider = when {
-            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
-            locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
-            else -> null
-        } ?: return
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+        if (!isLocationEnabled()) {
+            setWaitingState("Location is off; waiting for it to be enabled")
+            preferences.recoveryStatus = "Waiting for Location to be enabled"
+            return
+        }
+        val providers = buildList {
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) add(LocationManager.NETWORK_PROVIDER)
+            if (PermissionManager.hasFineLocation(this@LocationService) && locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) add(LocationManager.GPS_PROVIDER)
+        }
+        if (providers.isEmpty()) {
+            setWaitingState("No Location provider is available")
+            preferences.recoveryStatus = "No GPS or Network provider available"
+            return
+        }
         try {
-            locationManager.requestLocationUpdates(provider, UPDATE_INTERVAL_MS, 100f, listener, Looper.getMainLooper())
-            updateNotification()
-        } catch (_: SecurityException) { updateNotification() }
+            for (provider in providers) {
+                locationManager.requestLocationUpdates(provider, UPDATE_INTERVAL_MS, MIN_DISTANCE_METERS, listener, Looper.getMainLooper())
+                registeredProviders += provider
+            }
+            preferences.locationActive = registeredProviders.isNotEmpty()
+            preferences.recoveryStatus = "Active; last checked after $trigger"
+            updateNotification("Location access is active", true)
+        } catch (_: SecurityException) {
+            stopRequests()
+            setWaitingState("Location permission was revoked")
+            preferences.recoveryStatus = "Permission was revoked"
+        } catch (_: IllegalArgumentException) {
+            stopRequests()
+            setWaitingState("Location provider is unavailable")
+            preferences.recoveryStatus = "Provider unavailable"
+        }
     }
 
-    private fun stopRequests() { if (::locationManager.isInitialized) locationManager.removeUpdates(listener) }
-    private fun isLocationEnabled() = locationManager.isLocationEnabled
-    private fun updateNotification() { getSystemService(android.app.NotificationManager::class.java).notify(NotificationHelper.NOTIFICATION_ID, NotificationHelper.build(this, isLocationEnabled())) }
-    override fun onDestroy() { stopRequests(); super.onDestroy() }
+    private fun setWaitingState(message: String) {
+        preferences.locationActive = false
+        updateNotification(message, false)
+    }
+
+    private fun stopRequests() {
+        if (!::locationManager.isInitialized) return
+        runCatching { locationManager.removeUpdates(listener) }
+        registeredProviders.clear()
+        if (::preferences.isInitialized) preferences.locationActive = false
+    }
+
+    private fun isLocationEnabled(): Boolean = runCatching { locationManager.isLocationEnabled }.getOrDefault(false)
+
+    private fun updateNotification(message: String, active: Boolean) {
+        getSystemService(android.app.NotificationManager::class.java).notify(NotificationHelper.NOTIFICATION_ID, NotificationHelper.build(this, message, active))
+    }
+
+    override fun onDestroy() {
+        stopRequests()
+        if (::stateMonitor.isInitialized) stateMonitor.stop()
+        if (::preferences.isInitialized) preferences.runtimeRunning = false
+        super.onDestroy()
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
-    companion object { const val PREFS = "settings"; const val KEY_ENABLED = "service_enabled"; private const val UPDATE_INTERVAL_MS = 60_000L }
+    companion object {
+        private const val UPDATE_INTERVAL_MS = 60_000L
+        private const val MIN_DISTANCE_METERS = 100f
+    }
 }

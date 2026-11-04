@@ -33,11 +33,15 @@
             </intent-filter>
         </receiver>
         <receiver
-            android:name=".LocationStateReceiver"
-            android:exported="false">
+            android:name=".AdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
             <intent-filter>
-                <action android:name="android.location.PROVIDERS_CHANGED" />
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
         </receiver>
     </application>
 </manifest>

@@ -1,5 +1,6 @@
 package com.xtreme.locationstatushelper
 
+import android.annotation.SuppressLint
 import android.Manifest
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
@@ -130,6 +131,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun isLocationEnabled(): Boolean = runCatching { getSystemService(LocationManager::class.java).isLocationEnabled }.getOrDefault(false)
     private fun openAppSettings() { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
 

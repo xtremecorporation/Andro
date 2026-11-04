@@ -1,5 +1,6 @@
 package com.xtreme.locationstatushelper
 
+import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Intent
 import android.location.Location
@@ -57,6 +58,7 @@ class LocationService : Service() {
         return START_STICKY
     }
 
+    @SuppressLint("MissingPermission")
     private fun refreshRequests(trigger: String) {
         if (!::preferences.isInitialized || !preferences.userEnabled) return
         stopRequests()
@@ -103,6 +105,7 @@ class LocationService : Service() {
         updateNotification(message, false)
     }
 
+    @SuppressLint("MissingPermission")
     private fun stopRequests() {
         if (!::locationManager.isInitialized) return
         runCatching { locationManager.removeUpdates(listener) }
@@ -110,6 +113,7 @@ class LocationService : Service() {
         if (::preferences.isInitialized) preferences.locationActive = false
     }
 
+    @SuppressLint("MissingPermission")
     private fun isLocationEnabled(): Boolean = runCatching { locationManager.isLocationEnabled }.getOrDefault(false)
 
     private fun updateNotification(message: String, active: Boolean) {

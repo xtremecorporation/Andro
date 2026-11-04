@@ -1,5 +1,6 @@
 package com.xtreme.locationstatushelper
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -38,6 +39,7 @@ class LocationStateMonitor(
         registered = false
     }
 
+    @SuppressLint("MissingPermission")
     private fun dispatch() {
         val gps = runCatching { locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) }.getOrDefault(false)
         val network = runCatching { locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) }.getOrDefault(false)

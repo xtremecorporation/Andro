@@ -8,19 +8,27 @@ class ServicePreferences(context: Context) {
 
     var userEnabled: Boolean
         get() = prefs.getBoolean(KEY_USER_ENABLED, false)
-        set(value) = prefs.edit().putBoolean(KEY_USER_ENABLED, value).commit()
+        set(value) {
+            prefs.edit().putBoolean(KEY_USER_ENABLED, value).commit()
+        }
 
     var runtimeRunning: Boolean
         get() = prefs.getBoolean(KEY_RUNTIME_RUNNING, false)
-        set(value) = prefs.edit().putBoolean(KEY_RUNTIME_RUNNING, value).commit()
+        set(value) {
+            prefs.edit().putBoolean(KEY_RUNTIME_RUNNING, value).commit()
+        }
 
     var locationActive: Boolean
         get() = prefs.getBoolean(KEY_LOCATION_ACTIVE, false)
-        set(value) = prefs.edit().putBoolean(KEY_LOCATION_ACTIVE, value).commit()
+        set(value) {
+            prefs.edit().putBoolean(KEY_LOCATION_ACTIVE, value).commit()
+        }
 
     var recoveryStatus: String
         get() = prefs.getString(KEY_RECOVERY_STATUS, "Not attempted") ?: "Not attempted"
-        set(value) = prefs.edit().putString(KEY_RECOVERY_STATUS, value).commit()
+        set(value) {
+            prefs.edit().putString(KEY_RECOVERY_STATUS, value).commit()
+        }
 
     companion object {
         const val FILE = "settings"
